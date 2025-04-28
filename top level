@@ -1,0 +1,273 @@
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: max
+-- 
+-- Create Date: 07.04.2025 14:59:08
+-- Design Name: 
+-- Module Name: top_level - Behavioral
+-- Project Name: 
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- ============================================================================
+--  Entity       : top_level
+--  Description  : Top-level image processing module integrating image memory,
+--                 thresholding, and Sobel edge detection. This module serves 
+--                 as the primary controller for loading image data, processing 
+--                 it in real time, and visualizing internal signals via an ILA.
+--
+--  Functionality:
+--      - Loads pixel data from memory using `image_ram`.
+--      - Applies thresholding using the `thresholding` component.
+--      - Computes edge detection using the `sobel` component.
+--      - Interfaces with ILA (`ila_top`) for debug signal monitoring.
+--      - Uses `processing_active` as a debug indicator flag.
+--
+--  Generics:
+--      WIDTH       : Integer - Pixel bit width (default: 8 bits).
+--      IMG_WIDTH   : Integer - Image width in pixels (default: 32).
+--      IMG_HEIGHT  : Integer - Image height in pixels (default: 32).
+--      THRESHOLD   : Integer - Threshold level for binary segmentation.
+--      IMG_FILE    : String  - Path to input image file.
+--
+--  Ports:
+--      clk_in1     : in  std_logic  - Clock input.
+--      rst         : in  std_logic  - Active-high synchronous reset.
+--      start       : in  std_logic  - Manual start trigger (user-driven).
+--      done        : inout std_logic - Signals completion of image read process.
+--      btn_start   : out std_logic  - Output to physical start button (mirrors start signal).
+--
+--      thresh_pixel: buffer std_logic - Binary pixel output from thresholding.
+--      thresh_valid: out std_logic    - Indicates validity of thresholded pixel.
+--
+--      sobel_pixel : inout std_logic_vector(WIDTH-1 downto 0) - Sobel edge output.
+--      sobel_valid : buffer std_logic - Valid signal for sobel_pixel.
+--
+--  Components:
+--      image_ram       : Reads image data line-by-line into RAM.
+--      thresholding    : Compares pixel to threshold; outputs binary.
+--      sobel           : Performs Sobel edge detection on pixel stream.
+--      ila_top         : Debug instrumentation using Integrated Logic Analyzer.
+--
+--  Notes:
+--      - `start_sig` is internally hardwired to '1' to ensure processing starts.
+--      - The system sets `processing_active` high on start for easy debug visualization.
+--      - `ila_top` observes critical signals including pixel values, valid flags, 
+--        and system status for hardware debugging.
+--
+--  Debug:
+--      - ILA probes monitor clock, reset, start, done, pixel values, and flags.
+--      - Constant high/low signals are routed to unused ILA channels for testing.
+-- ============================================================================
+
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity top_level is
+    Generic (
+        WIDTH : integer := 8;
+        IMG_WIDTH : integer := 32;
+        IMG_HEIGHT : integer := 32;
+        THRESHOLD : integer := 128;
+        IMG_FILE : string := "input_image.txt"
+    );
+    Port (
+        clk_in1 : in std_logic;
+        rst : in std_logic;
+        start : in std_logic;
+        done : inout std_logic;
+        btn_start : out std_logic;  -- your push button
+        -- Threshold output
+        thresh_pixel : inout std_logic;
+        thresh_valid : out std_logic;
+        -- Sobel output
+        sobel_pixel : inout std_logic_vector(WIDTH-1 downto 0);
+        sobel_valid : inout std_logic
+      
+    );
+end top_level;
+
+architecture Behavioral of top_level is
+    component image_ram is
+        Generic (
+            WIDTH : integer := 8;
+            IMG_WIDTH : integer := 32;
+            IMG_HEIGHT : integer := 32;
+            IMG_FILE : string := "input_image.txt"
+            
+        );
+        Port (
+            clk : in std_logic;
+            rst : in std_logic;
+            pixel_out : out std_logic_vector(7 downto 0);
+            valid_out : out std_logic;
+            read_en : in std_logic;
+            done : inout std_logic
+        );
+    end component;
+    
+    
+    component thresholding is  -- Changed from 'thresholding' to 'threshold'
+        Generic (
+            WIDTH : integer := 8;
+            THRESHOLD : integer := 128
+        );
+        Port (
+            clk: in std_logic;
+            rst : in std_logic;
+            pixel_in : in std_logic_vector(WIDTH-1 downto 0);
+            valid_in : in std_logic;
+            pixel_out : out std_logic;
+            valid_out : out std_logic
+        );
+    end component;
+    
+    component sobel is
+        Generic (
+            WIDTH : integer := 8;
+            IMG_WIDTH : integer := 32;
+            IMG_HEIGHT : integer := 32
+        );
+        Port (
+           clk : in std_logic;
+            rst : in std_logic;
+            pixel_in : in std_logic_vector(WIDTH-1 downto 0);
+            valid_in : in std_logic;
+            pixel_out : out std_logic_vector(WIDTH-1 downto 0);
+            valid_out : out std_logic
+        );
+    end component;
+    component ila_top
+    port (
+    clk : in std_logic;
+   probe0 : in std_logic_vector(0 downto 0);
+   probe1 : in std_logic_vector(0 downto 0);
+   probe2 : in std_logic_vector(0 downto 0);
+   probe3 : in std_logic_vector(0 downto 0);
+   probe4 : in std_logic_vector(7 downto 0);
+   probe5 : in std_logic_vector(0 downto 0);
+   probe6 : in std_logic_vector(0 downto 0);
+   probe7 : in std_logic_vector(0 downto 0);
+   probe8 : in std_logic_vector(0 downto 0);
+   probe9 : in std_logic_vector(0 downto 0)
+);
+end component;
+    signal ram_pixel : std_logic_vector(WIDTH-1 downto 0);
+    signal ram_valid, ram_done : std_logic;
+    signal thresh_valid_int : std_logic;
+--   signal done_int : std_logic;  -- Changed to std_logic
+-- Internal signal declarations
+    signal done_int : std_logic_vector(0 downto 0);
+   signal start_sig : std_logic;
+--    signal start_sync : std_logic;  -- Synchronized 'start'
+
+---- Debug signals
+   signal processing_active : std_logic := '0';
+--    signal pixel_counter : unsigned(15 downto 0) := (others => '0');
+signal debug_const_high : std_logic := '1';
+signal debug_const_low : std_logic := '0';
+
+--for storing the data
+type img_array_thresh is array (0 to IMG_WIDTH*IMG_HEIGHT-1) of std_logic;
+type img_array_sobel is array (0 to IMG_WIDTH*IMG_HEIGHT-1) of std_logic_vector(WIDTH-1 downto 0);
+
+signal thresh_image : img_array_thresh := (others => '0');
+signal sobel_image : img_array_sobel := (others => (others => '0'));
+signal pixel_index : integer range 0 to IMG_WIDTH*IMG_HEIGHT-1 := 0;
+begin
+
+
+    -- Image memory
+    u_image_ram: image_ram
+        generic map (
+            WIDTH => WIDTH,
+            IMG_WIDTH => IMG_WIDTH,
+            IMG_HEIGHT => IMG_HEIGHT
+           
+        )
+        port map (
+            clk => clk_in1,
+            rst => rst,
+            pixel_out => ram_pixel,
+            valid_out => ram_valid,
+            read_en => start_sig,
+            done => ram_done
+        );
+    
+     -- Thresholding module (corrected instance name)
+    u_threshold: thresholding  -- Changed from 'thresholding' to 'threshold'
+        generic map (
+            WIDTH => WIDTH,
+            THRESHOLD => THRESHOLD
+        )
+        port map (
+            clk => clk_in1,
+            rst => rst,
+            pixel_in => ram_pixel,
+            valid_in => ram_valid,
+            pixel_out => thresh_pixel,
+            valid_out => thresh_valid_int
+        );
+    
+    thresh_valid <= thresh_valid_int;
+
+ila_inst : ila_top
+port map (
+    
+    clk => clk_in1,  -- Direct clock connection
+    probe0(0) => clk_in1,       -- If you want to monitor clock
+    probe1(0) => rst,       -- Reset
+    probe2(0) =>  start_sig,     --  the start signal
+    probe3(0) => done,      -- Done signal
+    probe4    => sobel_pixel, -- 8-bit pixel value
+    probe5(0) => sobel_valid, -- Valid flag
+    probe6(0) => thresh_pixel, -- Threshold output
+    probe7(0) => processing_active,  -- check to see if the system works
+    probe8(0) => debug_const_high,
+    probe9(0) => debug_const_low
+    
+);
+    -- Sobel edge detection module
+    u_sobel: sobel
+        generic map (
+            WIDTH => WIDTH,
+            IMG_WIDTH => IMG_WIDTH,
+            IMG_HEIGHT => IMG_HEIGHT
+        )
+        port map (
+            clk => clk_in1,
+            rst => rst,
+            pixel_in => ram_pixel,
+            valid_in => ram_valid,
+            pixel_out => sobel_pixel,
+            valid_out => sobel_valid
+        );
+
+    process(clk_in1) 
+     --see if the reset signal is affected in the ILA
+     --This just flips processing_active high when you hit start, which is useful to visually confirm the system is responding.
+begin
+     if rising_edge(clk_in1) then
+        if rst = '1' then
+            pixel_index <= 0;
+        elsif thresh_valid_int = '1' then
+            if pixel_index < IMG_WIDTH*IMG_HEIGHT then
+                thresh_image(pixel_index) <= thresh_pixel;
+                sobel_image(pixel_index) <= sobel_pixel;
+                pixel_index <= pixel_index + 1;
+            end if;
+        end if;
+    end if;
+end process;
+ btn_start <= start_sig;
+    start_sig <= '1';  --this line makes the whole bloody thing work ffs
+    done <= ram_done;
+end Behavioral;
