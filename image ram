@@ -1,0 +1,219 @@
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: max
+-- 
+-- Create Date: 07.04.2025 14:59:08
+-- Design Name: 
+-- Module Name: image_ram - Behavioral
+-- Project Name: Image_processing pipeline
+-- Target Devices: 
+-- Tool Versions: 
+-- Description: 
+-- Entity       : image_ram
+-- Description  : A configurable 2D image memory block designed to store pixel
+--                 data for image processing in hardware. This module reads an 
+--                 image from a file or initializes it internally, and streams 
+--                 pixel values row by row.
+--
+-- Generics:
+--      WIDTH       : Integer - Bit-width of each pixel (default: 8 bits).
+--      IMG_WIDTH   : Integer - Number of pixels per image row (default: 32).
+--      IMG_HEIGHT  : Integer - Number of rows in the image (default: 32).
+--      IMG_FILE    : String  - File path of the image to be loaded (optional).
+--
+-- Ports:
+--      clk         : in  std_logic  - Clock signal.
+--      rst         : in  std_logic  - Synchronous reset signal.
+--      pixel_out   : out std_logic_vector(WIDTH-1 downto 0) 
+--                              - Current pixel output value.
+--      valid_out   : out std_logic  - Indicates when pixel_out is valid.
+--      read_en     : in  std_logic  - Read enable signal for stepping through
+--                                     the image data.
+--      done        : out std_logic  - Signal indicating all pixels have been
+--                                     read.
+--
+-- Notes:
+--      - The image is stored internally as a 2D array of std_logic_vector.
+--      - This is suitable for simulation or hardware systems where images are
+--        processed line-by-line.
+--      - For synthesis with file reading, additional tooling or IP may be 
+--        needed as standard VHDL has limited file I/O in hardware.
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- 
+----------------------------------------------------------------------------------
+
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+--This section defines generic parameters, which are 
+--like constants that can be set when the entity is instantiated. 
+--They're useful 
+--for making the entity reusable with different configurations.
+entity image_ram is
+    Generic (
+        WIDTH : integer := 8;
+        IMG_WIDTH : integer := 32;
+        IMG_HEIGHT : integer := 32;
+         IMG_FILE : string := "input_image.txt"
+    );
+    Port (
+        clk : in std_logic;
+        rst : in std_logic;
+        pixel_out : out std_logic_vector(WIDTH-1 downto 0);
+        valid_out : out std_logic;
+        read_en : in std_logic;
+        done : out std_logic
+    );
+end image_ram;
+
+architecture Behavioral of image_ram is
+    type image_type is array (0 to IMG_HEIGHT-1, 0 to IMG_WIDTH-1) of std_logic_vector(WIDTH-1 downto 0);
+    
+    signal image_ram : image_type := (
+        -- Row 0
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", 
+         x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 1
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", 
+         x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 2
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"EB", x"81", x"6D", x"79", x"7B", x"7B", x"77", x"6C", 
+         x"83", x"E3", x"F5", x"A6", x"75", x"6C", x"6E", x"6D", x"74", x"C4", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 3
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"E8", x"6D", x"7D", x"77", x"75", x"76", x"75", x"76", x"7A", 
+         x"7D", x"64", x"62", x"78", x"7B", x"77", x"76", x"77", x"7D", x"6A", x"C8", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 4
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"F7", x"70", x"7C", x"75", x"76", x"6F", x"66", x"67", x"67", x"66", 
+         x"6E", x"79", x"69", x"74", x"76", x"76", x"76", x"76", x"76", x"7F", x"71", x"FD", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 5
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"91", x"7A", x"75", x"72", x"63", x"64", x"6F", x"73", x"73", x"6E", 
+         x"67", x"62", x"60", x"65", x"6A", x"69", x"69", x"69", x"68", x"6C", x"61", x"E3", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 6
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"DD", x"6A", x"79", x"75", x"6F", x"6E", x"76", x"75", x"75", x"76", x"76", 
+         x"75", x"73", x"60", x"53", x"6E", x"6F", x"6E", x"6F", x"70", x"6E", x"67", x"70", x"9B", x"F6", x"FF", x"FF"),
+        -- Row 7
+        (x"FF", x"FF", x"FF", x"FF", x"FF", x"88", x"7C", x"74", x"74", x"75", x"75", x"75", x"75", x"6C", x"61", x"5E", 
+         x"61", x"63", x"67", x"5B", x"5D", x"76", x"73", x"6E", x"63", x"5E", x"5F", x"66", x"6B", x"6C", x"F8", x"FF"),
+        -- Row 8
+        (x"FF", x"FF", x"FF", x"FD", x"B4", x"68", x"79", x"74", x"74", x"75", x"74", x"6F", x"64", x"5F", x"60", x"65", 
+         x"6B", x"68", x"63", x"66", x"5D", x"56", x"5A", x"59", x"5F", x"61", x"60", x"60", x"5B", x"5C", x"6D", x"FA"),
+        -- Row 9
+        (x"FF", x"FF", x"F0", x"72", x"6A", x"6F", x"75", x"74", x"75", x"72", x"64", x"5E", x"5F", x"6A", x"72", x"73", 
+         x"75", x"7A", x"7C", x"76", x"70", x"65", x"66", x"66", x"69", x"76", x"6C", x"6A", x"8E", x"89", x"62", x"92"),
+        -- Row 10
+        (x"FF", x"FF", x"87", x"7E", x"6A", x"6F", x"75", x"75", x"6F", x"5D", x"65", x"67", x"6A", x"6C", x"75", x"8B", 
+         x"77", x"5C", x"6E", x"DA", x"F7", x"D1", x"84", x"B1", x"CF", x"9C", x"41", x"18", x"32", x"CE", x"E9", x"98"),
+        -- Row 11
+        (x"FF", x"D4", x"6B", x"78", x"70", x"73", x"74", x"74", x"73", x"6A", x"67", x"70", x"BD", x"DA", x"F0", x"6E", 
+         x"3B", x"1C", x"2C", x"38", x"F9", x"EB", x"FF", x"FF", x"FF", x"28", x"1F", x"34", x"37", x"2E", x"FF", x"C4"),
+        -- Row 12
+        (x"FF", x"80", x"7C", x"74", x"75", x"74", x"74", x"74", x"74", x"75", x"76", x"6A", x"88", x"D9", x"F1", x"0F", 
+         x"08", x"18", x"65", x"01", x"7E", x"86", x"C0", x"DE", x"CF", x"0A", x"1E", x"20", x"38", x"27", x"8C", x"B3"),
+        -- Row 13
+        (x"DF", x"6A", x"78", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"75", x"6D", x"5B", x"5C", x"6D", x"45", 
+         x"46", x"45", x"41", x"5F", x"5B", x"5D", x"6A", x"6E", x"70", x"62", x"62", x"66", x"71", x"6C", x"B9", x"FF"),
+        -- Row 14
+        (x"96", x"79", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"75", x"75", x"6E", x"67", x"69", 
+         x"6A", x"69", x"60", x"60", x"6F", x"75", x"72", x"75", x"76", x"78", x"79", x"77", x"6F", x"B3", x"FF", x"FF"),
+        -- Row 15
+        (x"7C", x"7C", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"76", x"75", 
+         x"6C", x"65", x"68", x"73", x"75", x"75", x"6A", x"60", x"60", x"68", x"6A", x"5E", x"C9", x"FF", x"FF", x"FF"),
+        -- Row 16
+        (x"71", x"7B", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"67", 
+         x"6A", x"73", x"76", x"74", x"74", x"74", x"76", x"71", x"6A", x"73", x"73", x"79", x"6F", x"F0", x"FF", x"FF"),
+        -- Row 17
+        (x"6A", x"79", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"75", 
+         x"76", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"76", x"74", x"74", x"74", x"7C", x"85", x"FF", x"FF"),
+        -- Row 18
+        (x"67", x"78", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"75", x"76", x"75", x"76", x"76", x"76", x"75", 
+         x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"74", x"7A", x"6B", x"F3", x"FF"),
+        -- Row 19
+        (x"68", x"78", x"74", x"74", x"74", x"74", x"74", x"74", x"76", x"6D", x"62", x"63", x"64", x"63", x"6A", x"6E", 
+         x"70", x"74", x"76", x"76", x"76", x"76", x"76", x"76", x"76", x"76", x"77", x"76", x"72", x"61", x"B1", x"FF"),
+        -- Row 20
+        (x"69", x"7A", x"74", x"74", x"74", x"74", x"74", x"75", x"6E", x"5E", x"6A", x"69", x"68", x"67", x"66", x"65", 
+         x"5F", x"62", x"64", x"62", x"65", x"69", x"69", x"69", x"6A", x"69", x"64", x"62", x"5F", x"73", x"70", x"FF"),
+        -- Row 21
+        (x"70", x"7A", x"74", x"74", x"74", x"74", x"74", x"77", x"64", x"69", x"6B", x"60", x"60", x"5B", x"5C", x"60", 
+         x"61", x"65", x"68", x"66", x"64", x"62", x"62", x"62", x"62", x"61", x"64", x"68", x"6B", x"6B", x"D1", x"FF"),
+        -- Row 22
+        (x"7A", x"7C", x"74", x"74", x"74", x"74", x"74", x"6E", x"6B", x"5F", x"63", x"64", x"63", x"63", x"66", x"67", 
+         x"62", x"61", x"60", x"5C", x"59", x"59", x"5B", x"5B", x"5B", x"59", x"5A", x"5F", x"64", x"A9", x"FF", x"FF"),
+        -- Row 23
+        (x"97", x"79", x"76", x"74", x"74", x"74", x"75", x"67", x"66", x"72", x"71", x"72", x"6E", x"67", x"62", x"64", 
+         x"61", x"61", x"66", x"66", x"65", x"65", x"65", x"65", x"66", x"68", x"6E", x"6F", x"68", x"CF", x"FF", x"FF"),
+        -- Row 24
+        (x"E0", x"5E", x"74", x"76", x"76", x"74", x"74", x"75", x"68", x"69", x"75", x"74", x"75", x"76", x"76", x"76", 
+         x"73", x"6F", x"6D", x"6D", x"6D", x"6C", x"6A", x"66", x"68", x"62", x"79", x"B6", x"ED", x"FF", x"FF", x"FF"),
+        -- Row 25
+        (x"6C", x"43", x"50", x"63", x"6B", x"71", x"75", x"76", x"78", x"76", x"75", x"74", x"74", x"74", x"74", x"74", 
+         x"74", x"75", x"75", x"75", x"76", x"77", x"7C", x"7C", x"6F", x"A0", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 26
+        (x"64", x"47", x"42", x"47", x"56", x"61", x"66", x"66", x"69", x"6E", x"6F", x"72", x"73", x"73", x"73", x"74", 
+         x"74", x"74", x"74", x"73", x"73", x"6E", x"74", x"97", x"E7", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 27
+        (x"66", x"49", x"46", x"43", x"42", x"46", x"55", x"60", x"60", x"67", x"66", x"60", x"60", x"61", x"61", x"61", 
+         x"61", x"61", x"5F", x"5D", x"50", x"4B", x"E9", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 28
+        (x"66", x"49", x"46", x"46", x"46", x"44", x"42", x"41", x"41", x"47", x"4D", x"4F", x"4E", x"4E", x"4E", x"4F", 
+         x"4F", x"4E", x"4D", x"47", x"42", x"46", x"4D", x"B1", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 29
+        (x"66", x"49", x"46", x"46", x"46", x"46", x"46", x"46", x"46", x"44", x"43", x"43", x"43", x"42", x"42", x"42", 
+         x"42", x"42", x"43", x"45", x"46", x"46", x"49", x"43", x"97", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 30
+        (x"5F", x"4A", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"47", 
+         x"47", x"47", x"47", x"47", x"47", x"47", x"47", x"49", x"41", x"C4", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF"),
+        -- Row 31
+        (x"94", x"79", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", 
+         x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"77", x"78", x"A4", x"FF", x"FF", x"FF", x"FF", x"FF", x"FF")
+    );
+    signal reading : std_logic := '0'; -- NEW: internal latch for read state
+    signal x_pos, y_pos : integer := 0;
+begin
+    process(clk)
+    begin
+    
+        if rising_edge(clk) then
+            if rst = '1' then
+                x_pos <= 0;
+                y_pos <= 0;
+                valid_out <= '0';
+                done <= '0';
+                reading <= '0';  -- Reset the internal reading flag
+            else
+                valid_out <= '0';
+                done <= '0';
+                
+                                -- Latch start of reading when read_en is high
+                if read_en = '1' then
+                    reading <= '1';
+                end if;
+
+                if reading = '1' then
+                    if y_pos < IMG_HEIGHT then
+                        pixel_out <= image_ram(y_pos, x_pos);
+                        valid_out <= '1';
+
+                        if x_pos = IMG_WIDTH - 1 then
+                            x_pos <= 0;
+                            if y_pos = IMG_HEIGHT - 1 then
+                                y_pos <= 0;
+                                done <= '1';
+                                reading <= '0'; -- Stop reading
+                            else
+                                y_pos <= y_pos + 1;
+                            end if;
+                        else
+                            x_pos <= x_pos + 1;
+                        end if;
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+end Behavioral;
