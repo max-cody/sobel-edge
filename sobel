@@ -1,0 +1,173 @@
+-------------------------------------------------------------------------------
+-- Entity: sobel
+-- Description:
+--     This VHDL module implements the Sobel edge detection filter for streaming
+--     grayscale image pixels. It uses a 3x3 Sobel kernel to calculate the 
+--     gradient magnitude at each pixel and outputs the result in real-time.
+--
+-- Generics:
+--     WIDTH       : Bit-width of each pixel (default 8 bits).
+--     IMG_WIDTH   : Width of the input image in pixels.
+--     IMG_HEIGHT  : Height of the input image in pixels.
+--
+-- Ports:
+--     clk         : Clock signal.
+--     rst         : Reset signal (active high).
+--     pixel_in    : Input pixel (grayscale, WIDTH bits).
+--     valid_in    : High when pixel_in is valid.
+--     pixel_out   : Output pixel after Sobel processing.
+--     valid_out   : High when pixel_out is valid.
+--
+-- Functionality:
+--     - Buffers two previous rows of pixels.
+--     - Forms a 3x3 pixel window around the current pixel.
+--     - Applies Sobel kernels in X and Y directions.
+--     - Computes the magnitude of the gradient.
+--     - Outputs the edge-detected pixel value.
+-------------------------------------------------------------------------------
+
+--working example
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+--The goal of this design is to perform real-time edge detection 
+--on a stream of image pixels using the Sobel operator, 
+--a common convolution filter.
+entity sobel is
+    Generic (
+        WIDTH : integer := 8;       -- Input bit width
+        IMG_WIDTH : integer := 32;  -- Image width in pixels
+        IMG_HEIGHT : integer := 32  -- Image height in pixels
+    );
+    Port (
+        clk : in std_logic;
+        rst : in std_logic;
+        pixel_in : in std_logic_vector(WIDTH-1 downto 0);
+        valid_in : in std_logic;
+        pixel_out : out std_logic_vector(WIDTH-1 downto 0);
+        valid_out : out std_logic
+    );
+end sobel;
+
+architecture Behavioral of sobel is
+    -- Line buffers for storing previous rows 2 rows 
+    type line_buffer_type is array (0 to IMG_WIDTH-1) of std_logic_vector(WIDTH-1 downto 0);
+    signal line_buffer1, line_buffer2 : line_buffer_type := (others => (others => '0'));
+    
+    -- 3x3 pixel window (9 pixels of WIDTH bits each)
+    type window_type is array (0 to 8) of std_logic_vector(WIDTH-1 downto 0);
+    signal window : window_type;
+    signal window_valid : std_logic := '0';
+    
+    -- Define array types for Sobel kernels
+    type kernel_type is array (0 to 8) of integer;
+    
+    -- Sobel kernels
+    constant GX : kernel_type := (-1, 0, 1, -2, 0, 2, -1, 0, 1);
+    constant GY : kernel_type := (-1, -2, -1, 0, 0, 0, 1, 2, 1);
+    
+    -- Pipeline registers with proper widths
+    signal sum_x, sum_y : signed(15 downto 0) := (others => '0');
+    signal sum_abs : unsigned(15 downto 0) := (others => '0');
+    signal sum_valid : std_logic := '0';
+    
+    -- Position counters
+    signal x_pos, y_pos : integer := 0;
+begin
+    process(clk)
+        variable gx_sum, gy_sum : signed(15 downto 0) := (others => '0');
+        variable temp_magnitude : unsigned(15 downto 0) := (others => '0');
+    begin
+    --Resets all buffers, counters, and outputs.
+        if rising_edge(clk) then
+            if rst = '1' then
+                line_buffer1 <= (others => (others => '0'));
+                line_buffer2 <= (others => (others => '0'));
+                window <= (others => (others => '0'));
+                window_valid <= '0';
+                valid_out <= '0';
+                pixel_out <= (others => '0');
+                x_pos <= 0;
+                y_pos <= 0;
+            else
+                -- Shift data through line buffers
+                --If a new pixel is valid
+                --Shift line_buffer1 to line_buffer2.
+                --Load new pixel into line_buffer1.
+                if valid_in = '1' then
+                    line_buffer2 <= line_buffer1;
+                    line_buffer1(x_pos) <= pixel_in;
+                    
+                    -- Update position counters
+                    --Manage image traversal. Once the row ends, move to next row.
+                    if x_pos = IMG_WIDTH-1 then
+                        x_pos <= 0;
+                        if y_pos = IMG_HEIGHT-1 then
+                            y_pos <= 0;
+                        else
+                            y_pos <= y_pos + 1;
+                        end if;
+                    else
+                        x_pos <= x_pos + 1;
+                    end if;
+                end if;
+                
+                -- Create 3x3 window when possible
+                --Only form window if we are not at the image edge.
+                window_valid <= '0';
+                if x_pos >= 1 and y_pos >= 1 and x_pos < IMG_WIDTH-1 and y_pos < IMG_HEIGHT-1 then
+                    -- Explicit window assignment to avoid concatenation issues
+                    window(0) <= line_buffer2(x_pos-1);  -- Top-left
+                    window(1) <= line_buffer2(x_pos);    -- Top-center
+                    window(2) <= line_buffer2(x_pos+1);  -- Top-right
+                    window(3) <= line_buffer1(x_pos-1);  -- Middle-left
+                    window(4) <= line_buffer1(x_pos);    -- Center
+                    window(5) <= line_buffer1(x_pos+1);  -- Middle-right
+                    window(6) <= pixel_in;               -- Bottom-left (current pixel)
+                    window(7) <= line_buffer1(x_pos);    -- Bottom-center
+                    window(8) <= line_buffer2(x_pos);    -- Bottom-right
+                    
+                    window_valid <= valid_in;
+                end if;
+                
+                -- Compute Sobel gradient
+                --Reset convolution accumulators.
+                sum_valid <= '0';
+                if window_valid = '1' then
+                    gx_sum := (others => '0');
+                    gy_sum := (others => '0');
+                     --For each pixel in the window, multiply by GX and GY values and accumulate.
+                     --Resizing ensures everything is 16 bits.
+                    for i in 0 to 8 loop
+                        gx_sum := gx_sum + resize(to_signed(GX(i), 16) * resize(signed(window(i)), 16), 16);
+                        gy_sum := gy_sum + resize(to_signed(GY(i), 16) * resize(signed(window(i)), 16), 16);
+                    end loop;
+                    --Store convolution results and mark as valid.
+                    sum_x <= gx_sum;
+                    sum_y <= gy_sum;
+                    sum_valid <= '1';
+                end if;
+                
+                -- Compute gradient magnitude and clamp to 8-bit
+                --Combine gradients into a single magnitude.
+                --abs(gx) + abs(gy) is a fast approx of sqrt(gx² + gy²).
+                valid_out <= '0';
+                if sum_valid = '1' then
+                    -- Calculate absolute sum with proper bit width handling
+                    temp_magnitude := unsigned(abs(sum_x) + abs(sum_y));
+                    
+                    -- Clamp to 8-bit output
+                    --Output the result and assert valid_out.
+
+
+                    if temp_magnitude > 255 then
+                        pixel_out <= (others => '1');  -- Max value (255)
+                    else
+                        pixel_out <= std_logic_vector(temp_magnitude(7 downto 0));
+                    end if;
+                    valid_out <= '1';
+                end if;
+            end if;
+        end if;
+    end process;
+end Behavioral;
