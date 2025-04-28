@@ -1,0 +1,86 @@
+-- ============================================================================
+-- Engineer     : Max
+-- Entity       : thresholding
+-- Description  : 
+--     This module performs binary thresholding on a stream of pixel data.
+--     Each input pixel (of width `WIDTH`) is compared against a constant
+--     threshold value (`THRESHOLD`). If the pixel value exceeds the threshold,
+--     the output is set to '1'; otherwise, it is set to '0'.
+--
+--     This is typically used after grayscale conversion or edge detection
+--     (e.g., after Sobel filtering) to produce a binary image.
+--
+-- Parameters   :
+--     WIDTH      : Integer (default = 8)
+--                  Specifies the bit width of each input pixel.
+--
+--     THRESHOLD  : Integer (default = 128)
+--                  The constant value against which each pixel is compared.
+--
+-- Ports        :
+--     clk        : Input std_logic
+--                  System clock.
+--
+--     rst        : Input std_logic
+--                  Active-high synchronous reset signal.
+--
+--     pixel_in   : Input std_logic_vector(WIDTH-1 downto 0)
+--                  The grayscale pixel value to be thresholded.
+--
+--     valid_in   : Input std_logic
+--                  Indicates when `pixel_in` holds valid data.
+--
+--     pixel_out  : Output std_logic
+--                  Binary thresholded output pixel ('1' or '0').
+--
+--     valid_out  : Output std_logic
+--                  Indicates when `pixel_out` is valid.
+--
+-- Usage        :
+--     This module should be used in pipelined image processing systems.
+--     It produces 1-bit output suitable for binary images or masks.
+-- ============================================================================
+
+
+
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+
+entity thresholding is
+    Generic (
+        WIDTH : integer := 8;       -- Input bit width
+        THRESHOLD : integer := 128  -- Threshold value
+    );
+    Port (
+        clk : in std_logic;
+        rst : in std_logic;
+        pixel_in : in std_logic_vector(WIDTH-1 downto 0);
+        valid_in : in std_logic;
+        pixel_out : out std_logic;
+        valid_out : out std_logic
+    );
+end thresholding;
+
+architecture Behavioral of thresholding is
+begin
+    process(clk)
+    begin
+        if rising_edge(clk) then
+            if rst = '1' then
+                pixel_out <= '0';
+                valid_out <= '0';
+            else
+                valid_out <= valid_in;
+                if valid_in = '1' then
+                    if unsigned(pixel_in) > THRESHOLD then
+                        pixel_out <= '1';
+                    else
+                        pixel_out <= '0';
+                    end if;
+                end if;
+            end if;
+        end if;
+    end process;
+end Behavioral;
