@@ -93,6 +93,7 @@ entity top_level is
 end top_level;
 
 architecture Behavioral of top_level is
+  -- Component declarations with appropriate generics and ports
     component image_ram is
         Generic (
             WIDTH : integer := 8;
@@ -142,6 +143,7 @@ architecture Behavioral of top_level is
             valid_out : out std_logic
         );
     end component;
+ -- Debugging component for logic analyzer (ILA)
     component ila_top
     port (
     clk : in std_logic;
@@ -157,6 +159,7 @@ architecture Behavioral of top_level is
    probe9 : in std_logic_vector(0 downto 0)
 );
 end component;
+ -- Internal signal declarations
     signal ram_pixel : std_logic_vector(WIDTH-1 downto 0);
     signal ram_valid, ram_done : std_logic;
     signal thresh_valid_int : std_logic;
@@ -172,17 +175,18 @@ end component;
 signal debug_const_high : std_logic := '1';
 signal debug_const_low : std_logic := '0';
 
---for storing the data
+-- Memory to store results from threshold and Sobel
 type img_array_thresh is array (0 to IMG_WIDTH*IMG_HEIGHT-1) of std_logic;
 type img_array_sobel is array (0 to IMG_WIDTH*IMG_HEIGHT-1) of std_logic_vector(WIDTH-1 downto 0);
 
 signal thresh_image : img_array_thresh := (others => '0');
 signal sobel_image : img_array_sobel := (others => (others => '0'));
+-- Pixel counter to index each pixel
 signal pixel_index : integer range 0 to IMG_WIDTH*IMG_HEIGHT-1 := 0;
 begin
 
 
-    -- Image memory
+    -- Instantiate image RAM module (reads pixels from file)
     u_image_ram: image_ram
         generic map (
             WIDTH => WIDTH,
@@ -199,8 +203,8 @@ begin
             done => ram_done
         );
     
-     -- Thresholding module (corrected instance name)
-    u_threshold: thresholding  -- Changed from 'thresholding' to 'threshold'
+      -- Instantiate thresholding module (binary output)
+    u_threshold: thresholding  
         generic map (
             WIDTH => WIDTH,
             THRESHOLD => THRESHOLD
@@ -212,10 +216,11 @@ begin
             valid_in => ram_valid,
             pixel_out => thresh_pixel,
             valid_out => thresh_valid_int
-        );
-    
+        ); 
+-- Connect internal valid signal to output
     thresh_valid <= thresh_valid_int;
 
+ -- Instantiate ILA for debugging and monitoring signals
 ila_inst : ila_top
 port map (
     
@@ -231,8 +236,9 @@ port map (
     probe8(0) => debug_const_high,
     probe9(0) => debug_const_low
     
-);
-    -- Sobel edge detection module
+); 
+-- Instantiate Sobel filter module (edge detection)
+
     u_sobel: sobel
         generic map (
             WIDTH => WIDTH,
@@ -247,7 +253,7 @@ port map (
             pixel_out => sobel_pixel,
             valid_out => sobel_valid
         );
-
+ -- Process to store the thresholded and Sobel-processed image results
     process(clk_in1) 
      --see if the reset signal is affected in the ILA
      --This just flips processing_active high when you hit start, which is useful to visually confirm the system is responding.
@@ -264,7 +270,7 @@ begin
         end if;
     end if;
 end process;
- btn_start <= start_sig;
-    start_sig <= '1';  --this line makes the whole bloody thing work ffs
-    done <= ram_done;
+ btn_start <= start_sig; -- Expose start signal externally for debug
+    start_sig <= '1';  -- Always enable the image processing (could be controlled dynamically)
+    done <= ram_done;  -- Propagate RAM done signal to top-level output
 end Behavioral;
