@@ -80,18 +80,15 @@ entity top_level is
         IMG_FILE : string := "input_image.txt"
     );
     Port (
-        clk_in1 : in std_logic;
-        rst : in std_logic;
-        start : in std_logic;
-        done : inout std_logic;
-        btn_start : out std_logic;  -- your push button
-        -- Threshold output
-        thresh_pixel : inout std_logic;
-        thresh_valid : out std_logic;
-        -- Sobel output
-        sobel_pixel : inout std_logic_vector(WIDTH-1 downto 0);
-        sobel_valid : inout std_logic
-      
+        clk_in1 : in std_logic;                 -- Clock input
+        rst : in std_logic;                     -- Reset signal
+        start : in std_logic;                   -- External start signal (not used)
+        done : inout std_logic;                 -- Signal to indicate completion
+        btn_start : out std_logic;              -- Debug output to indicate start signal
+        thresh_pixel : inout std_logic;         -- Thresholded binary output pixel
+        thresh_valid : out std_logic;           -- Valid signal for threshold output
+        sobel_pixel : inout std_logic_vector(WIDTH-1 downto 0); -- Sobel edge output
+        sobel_valid : inout std_logic           -- Valid signal for Sobel output
     );
 end top_level;
 
